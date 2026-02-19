@@ -225,6 +225,13 @@ func (t *ExecTool) Execute(ctx context.Context, args map[string]interface{}) *To
 
 func (t *ExecTool) guardCommand(command, cwd string) string {
 	cmd := strings.TrimSpace(command)
+
+	// Normalize newlines to semicolons to prevent deny-pattern bypass via
+	// embedded line breaks (e.g. "echo hello\nrm -rf /")
+	cmd = strings.ReplaceAll(cmd, "\r\n", " ; ")
+	cmd = strings.ReplaceAll(cmd, "\n", " ; ")
+	cmd = strings.ReplaceAll(cmd, "\r", " ; ")
+
 	lower := strings.ToLower(cmd)
 
 	for _, pattern := range t.denyPatterns {

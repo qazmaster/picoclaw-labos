@@ -83,11 +83,11 @@
       "web_search": true
     },
     "openrouter": {
-      "api_key": "sk-or-v1-xxx",
+      "api_key": "YOUR_OPENROUTER_API_KEY",
       "api_base": ""
     },
     "groq": {
-      "api_key": "gsk_xxx",
+      "api_key": "YOUR_GROQ_API_KEY",
       "api_base": ""
     },
     "zhipu": {
@@ -103,12 +103,12 @@
       "api_base": ""
     },
     "nvidia": {
-      "api_key": "nvapi-xxx",
+      "api_key": "YOUR_NVIDIA_API_KEY",
       "api_base": "",
       "proxy": "http://127.0.0.1:7890"
     },
     "moonshot": {
-      "api_key": "sk-xxx",
+      "api_key": "YOUR_MOONSHOT_API_KEY",
       "api_base": ""
     },
     "ollama": {
@@ -125,7 +125,7 @@
       },
       "perplexity": {
         "enabled": false,
-        "api_key": "pplx-xxx",
+        "api_key": "YOUR_PERPLEXITY_API_KEY",
         "max_results": 5
       }
     },

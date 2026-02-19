@@ -126,7 +126,7 @@ clean:
 vet:
 	@$(GO) vet ./...
 
-## fmt: Format Go code
+## test: Run tests
 test:
 	@$(GO) test ./...
 

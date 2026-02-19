@@ -22,6 +22,7 @@ type AgentInstance struct {
 	Workspace      string
 	MaxIterations  int
 	ContextWindow  int
+	Temperature    float64
 	Provider       providers.LLMProvider
 	Sessions       *session.SessionManager
 	ContextBuilder *ContextBuilder
@@ -83,6 +84,11 @@ func NewAgentInstance(
 	}
 	candidates := providers.ResolveCandidates(modelCfg, defaults.Provider)
 
+	temp := defaults.Temperature
+	if temp == 0 {
+		temp = 0.7
+	}
+
 	return &AgentInstance{
 		ID:             agentID,
 		Name:           agentName,
@@ -91,6 +97,7 @@ func NewAgentInstance(
 		Workspace:      workspace,
 		MaxIterations:  maxIter,
 		ContextWindow:  defaults.MaxTokens,
+		Temperature:    temp,
 		Provider:       provider,
 		Sessions:       sessionsManager,
 		ContextBuilder: contextBuilder,
