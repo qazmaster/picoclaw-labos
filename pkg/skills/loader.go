@@ -6,11 +6,13 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
 
 	"github.com/sipeed/picoclaw/pkg/logger"
+	"gopkg.in/yaml.v3"
 )
 
 var namePattern = regexp.MustCompile(`^[a-zA-Z0-9]+(-[a-zA-Z0-9]+)*$`)
@@ -20,16 +22,37 @@ const (
 	MaxDescriptionLength = 1024
 )
 
+type SkillChain struct {
+	If   string `yaml:"if,omitempty" json:"if,omitempty"`
+	Next string `yaml:"next" json:"next"`
+}
+
 type SkillMetadata struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
+	Name         string       `yaml:"name" json:"name"`
+	Description  string       `yaml:"description" json:"description"`
+	Chains       []SkillChain `yaml:"chains,omitempty" json:"chains,omitempty"`
+	Tier         int          `yaml:"tier,omitempty" json:"tier,omitempty"`
+	Dependencies []string     `yaml:"dependencies,omitempty" json:"dependencies,omitempty"`
 }
 
 type SkillInfo struct {
-	Name        string `json:"name"`
-	Path        string `json:"path"`
-	Source      string `json:"source"`
-	Description string `json:"description"`
+	Name         string       `json:"name"`
+	Path         string       `json:"path"`
+	Source       string       `json:"source"`
+	Description  string       `json:"description"`
+	Chains       []SkillChain `json:"chains,omitempty"`
+	Tier         int          `json:"tier,omitempty"`
+	Dependencies []string     `json:"dependencies,omitempty"`
+	MissingDeps  []string     `json:"missing_deps,omitempty"`
+}
+
+func (info *SkillInfo) CheckDependencies() {
+	info.MissingDeps = nil
+	for _, dep := range info.Dependencies {
+		if _, err := exec.LookPath(dep); err != nil {
+			info.MissingDeps = append(info.MissingDeps, dep)
+		}
+	}
 }
 
 func (info SkillInfo) validate() error {
@@ -87,7 +110,11 @@ func (sl *SkillsLoader) ListSkills() []SkillInfo {
 						if metadata != nil {
 							info.Description = metadata.Description
 							info.Name = metadata.Name
+							info.Chains = metadata.Chains
+							info.Tier = metadata.Tier
+							info.Dependencies = metadata.Dependencies
 						}
+						info.CheckDependencies()
 						if err := info.validate(); err != nil {
 							slog.Warn("invalid skill from workspace", "name", info.Name, "error", err)
 							continue
@@ -127,7 +154,11 @@ func (sl *SkillsLoader) ListSkills() []SkillInfo {
 						if metadata != nil {
 							info.Description = metadata.Description
 							info.Name = metadata.Name
+							info.Chains = metadata.Chains
+							info.Tier = metadata.Tier
+							info.Dependencies = metadata.Dependencies
 						}
+						info.CheckDependencies()
 						if err := info.validate(); err != nil {
 							slog.Warn("invalid skill from global", "name", info.Name, "error", err)
 							continue
@@ -166,7 +197,11 @@ func (sl *SkillsLoader) ListSkills() []SkillInfo {
 						if metadata != nil {
 							info.Description = metadata.Description
 							info.Name = metadata.Name
+							info.Chains = metadata.Chains
+							info.Tier = metadata.Tier
+							info.Dependencies = metadata.Dependencies
 						}
+						info.CheckDependencies()
 						if err := info.validate(); err != nil {
 							slog.Warn("invalid skill from builtin", "name", info.Name, "error", err)
 							continue
@@ -234,6 +269,11 @@ func (sl *SkillsLoader) BuildSkillsSummary() string {
 	var lines []string
 	lines = append(lines, "<skills>")
 	for _, s := range allSkills {
+		// Graceful Degradation: Expose skills even if dependencies are missing
+		if len(s.MissingDeps) > 0 {
+			slog.Debug("Skill has missing dependencies, but loaded for graceful degradation", "skill", s.Name, "missing", s.MissingDeps)
+		}
+
 		escapedName := escapeXML(s.Name)
 		escapedDesc := escapeXML(s.Description)
 		escapedPath := escapeXML(s.Path)
@@ -243,6 +283,30 @@ func (sl *SkillsLoader) BuildSkillsSummary() string {
 		lines = append(lines, fmt.Sprintf("    <description>%s</description>", escapedDesc))
 		lines = append(lines, fmt.Sprintf("    <location>%s</location>", escapedPath))
 		lines = append(lines, fmt.Sprintf("    <source>%s</source>", s.Source))
+		if len(s.Chains) > 0 {
+			lines = append(lines, "    <chains>")
+			for _, c := range s.Chains {
+				if c.If != "" {
+					lines = append(lines, fmt.Sprintf("      <chain if=\"%s\" next=\"%s\" />", escapeXML(c.If), escapeXML(c.Next)))
+				} else {
+					lines = append(lines, fmt.Sprintf("      <chain next=\"%s\" />", escapeXML(c.Next)))
+				}
+			}
+			lines = append(lines, "    </chains>")
+		}
+
+		if s.Tier > 0 {
+			lines = append(lines, fmt.Sprintf("    <tier>%d</tier>", s.Tier))
+		}
+		if len(s.Dependencies) > 0 {
+			lines = append(lines, fmt.Sprintf("    <dependencies>%s</dependencies>", escapeXML(strings.Join(s.Dependencies, ", "))))
+		}
+
+		if len(s.MissingDeps) > 0 {
+			lines = append(lines, fmt.Sprintf("    <status>MISSING_DEPENDENCIES: %s</status>", escapeXML(strings.Join(s.MissingDeps, ", "))))
+		} else {
+			lines = append(lines, "    <status>AVAILABLE</status>")
+		}
 		lines = append(lines, "  </skill>")
 	}
 	lines = append(lines, "</skills>")
@@ -280,7 +344,15 @@ func (sl *SkillsLoader) getSkillMetadata(skillPath string) *SkillMetadata {
 		}
 	}
 
-	// Fall back to simple YAML parsing
+	// Fall back to robust YAML parsing
+	var metadata SkillMetadata
+	if err := yaml.Unmarshal([]byte(frontmatter), &metadata); err == nil {
+		if metadata.Name != "" || metadata.Description != "" {
+			return &metadata
+		}
+	}
+
+	// Double check with simpler parser if standard yaml fails (e.g., malformed)
 	yamlMeta := sl.parseSimpleYAML(frontmatter)
 	return &SkillMetadata{
 		Name:        yamlMeta["name"],

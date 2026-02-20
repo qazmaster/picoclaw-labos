@@ -139,16 +139,26 @@ type SessionConfig struct {
 }
 
 type AgentDefaults struct {
-	Workspace           string   `json:"workspace" env:"PICOCLAW_AGENTS_DEFAULTS_WORKSPACE"`
-	RestrictToWorkspace bool     `json:"restrict_to_workspace" env:"PICOCLAW_AGENTS_DEFAULTS_RESTRICT_TO_WORKSPACE"`
-	Provider            string   `json:"provider" env:"PICOCLAW_AGENTS_DEFAULTS_PROVIDER"`
-	Model               string   `json:"model" env:"PICOCLAW_AGENTS_DEFAULTS_MODEL"`
-	ModelFallbacks      []string `json:"model_fallbacks,omitempty"`
-	ImageModel          string   `json:"image_model,omitempty" env:"PICOCLAW_AGENTS_DEFAULTS_IMAGE_MODEL"`
-	ImageModelFallbacks []string `json:"image_model_fallbacks,omitempty"`
-	MaxTokens           int      `json:"max_tokens" env:"PICOCLAW_AGENTS_DEFAULTS_MAX_TOKENS"`
-	Temperature         float64  `json:"temperature" env:"PICOCLAW_AGENTS_DEFAULTS_TEMPERATURE"`
-	MaxToolIterations   int      `json:"max_tool_iterations" env:"PICOCLAW_AGENTS_DEFAULTS_MAX_TOOL_ITERATIONS"`
+	Workspace                   string      `json:"workspace" env:"PICOCLAW_AGENTS_DEFAULTS_WORKSPACE"`
+	RestrictToWorkspace         bool        `json:"restrict_to_workspace" env:"PICOCLAW_AGENTS_DEFAULTS_RESTRICT_TO_WORKSPACE"`
+	Provider                    string      `json:"provider" env:"PICOCLAW_AGENTS_DEFAULTS_PROVIDER"`
+	Model                       string      `json:"model" env:"PICOCLAW_AGENTS_DEFAULTS_MODEL"`
+	ModelFallbacks              []string    `json:"model_fallbacks,omitempty"`
+	ImageModel                  string      `json:"image_model,omitempty" env:"PICOCLAW_AGENTS_DEFAULTS_IMAGE_MODEL"`
+	ImageModelFallbacks         []string    `json:"image_model_fallbacks,omitempty"`
+	MaxTokens                   int         `json:"max_tokens" env:"PICOCLAW_AGENTS_DEFAULTS_MAX_TOKENS"`
+	Temperature                 float64     `json:"temperature" env:"PICOCLAW_AGENTS_DEFAULTS_TEMPERATURE"`
+	ModelTiers                  *ModelTiers `json:"model_tiers,omitempty"`
+	MaxToolIterations           int         `json:"max_tool_iterations" env:"PICOCLAW_AGENTS_DEFAULTS_MAX_TOOL_ITERATIONS"`
+	CircuitBreakerMaxRetries    int         `json:"circuit_breaker_max_retries" env:"PICOCLAW_AGENTS_DEFAULTS_CIRCUIT_BREAKER_MAX_RETRIES"`
+	CircuitBreakerEscalateModel string      `json:"circuit_breaker_escalate_model,omitempty" env:"PICOCLAW_AGENTS_DEFAULTS_CIRCUIT_BREAKER_ESCALATE_MODEL"`
+}
+
+// ModelTiers defining specific models to use based on operational mode
+type ModelTiers struct {
+	Planning  string `json:"planning,omitempty"`
+	Execution string `json:"execution,omitempty"`
+	Heartbeat string `json:"heartbeat,omitempty"`
 }
 
 type ChannelsConfig struct {
@@ -325,13 +335,15 @@ func DefaultConfig() *Config {
 	return &Config{
 		Agents: AgentsConfig{
 			Defaults: AgentDefaults{
-				Workspace:           "~/.picoclaw/workspace",
-				RestrictToWorkspace: true,
-				Provider:            "",
-				Model:               "glm-4.7",
-				MaxTokens:           8192,
-				Temperature:         0.7,
-				MaxToolIterations:   20,
+				Workspace:                   "~/.picoclaw/workspace",
+				RestrictToWorkspace:         true,
+				Provider:                    "",
+				Model:                       "glm-4.7",
+				MaxTokens:                   8192,
+				Temperature:                 0.7,
+				MaxToolIterations:           20,
+				CircuitBreakerMaxRetries:    3,
+				CircuitBreakerEscalateModel: "",
 			},
 		},
 		Channels: ChannelsConfig{

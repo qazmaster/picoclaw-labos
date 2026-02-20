@@ -81,6 +81,24 @@ func ConvertConfig(data map[string]interface{}) (*config.Config, []string, error
 			if v, ok := getFloat(defaults, "max_tool_iterations"); ok {
 				cfg.Agents.Defaults.MaxToolIterations = int(v)
 			}
+			if v, ok := getFloat(defaults, "circuit_breaker_max_retries"); ok {
+				cfg.Agents.Defaults.CircuitBreakerMaxRetries = int(v)
+			}
+			if v, ok := getString(defaults, "circuit_breaker_escalate_model"); ok {
+				cfg.Agents.Defaults.CircuitBreakerEscalateModel = v
+			}
+			if tiers, ok := getMap(defaults, "model_tiers"); ok {
+				cfg.Agents.Defaults.ModelTiers = &config.ModelTiers{}
+				if v, ok := getString(tiers, "planning"); ok {
+					cfg.Agents.Defaults.ModelTiers.Planning = v
+				}
+				if v, ok := getString(tiers, "execution"); ok {
+					cfg.Agents.Defaults.ModelTiers.Execution = v
+				}
+				if v, ok := getString(tiers, "heartbeat"); ok {
+					cfg.Agents.Defaults.ModelTiers.Heartbeat = v
+				}
+			}
 			if v, ok := getString(defaults, "workspace"); ok {
 				cfg.Agents.Defaults.Workspace = rewriteWorkspacePath(v)
 			}

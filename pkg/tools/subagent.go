@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/sipeed/picoclaw/pkg/bus"
+	"github.com/sipeed/picoclaw/pkg/logger"
 	"github.com/sipeed/picoclaw/pkg/providers"
 )
 
@@ -20,6 +21,8 @@ type SubagentTask struct {
 	Status        string
 	Result        string
 	Created       int64
+	TTLMinutes    int // 0 = no limit
+	TokenLimit    int // 0 = no limit
 }
 
 type SubagentManager struct {
@@ -62,7 +65,7 @@ func (sm *SubagentManager) RegisterTool(tool Tool) {
 	sm.tools.Register(tool)
 }
 
-func (sm *SubagentManager) Spawn(ctx context.Context, task, label, agentID, originChannel, originChatID string, callback AsyncCallback) (string, error) {
+func (sm *SubagentManager) Spawn(ctx context.Context, task, label, agentID, originChannel, originChatID string, ttlMinutes, tokenLimit int, callback AsyncCallback) (string, error) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
@@ -78,26 +81,61 @@ func (sm *SubagentManager) Spawn(ctx context.Context, task, label, agentID, orig
 		OriginChatID:  originChatID,
 		Status:        "running",
 		Created:       time.Now().UnixMilli(),
+		TTLMinutes:    ttlMinutes,
+		TokenLimit:    tokenLimit,
 	}
 	sm.tasks[taskID] = subagentTask
+
+	// Log to JSONL Ledger
+	logger.LogLedgerEvent("SPAWN_AGENT", map[string]interface{}{
+		"task_id":        taskID,
+		"label":          label,
+		"agent_id":       agentID,
+		"origin_channel": originChannel,
+		"ttl_minutes":    ttlMinutes,
+		"token_limit":    tokenLimit,
+	})
 
 	// Start task in background with context cancellation support
 	go sm.runTask(ctx, subagentTask, callback)
 
+	var info string
 	if label != "" {
-		return fmt.Sprintf("Spawned subagent '%s' for task: %s", label, task), nil
+		info = fmt.Sprintf("Spawned subagent '%s' for task: %s", label, task)
+	} else {
+		info = fmt.Sprintf("Spawned subagent for task: %s", task)
 	}
-	return fmt.Sprintf("Spawned subagent for task: %s", task), nil
+	if ttlMinutes > 0 {
+		info += fmt.Sprintf(" (TTL: %dm)", ttlMinutes)
+	}
+	if tokenLimit > 0 {
+		info += fmt.Sprintf(" (token limit: %d)", tokenLimit)
+	}
+	return info, nil
 }
 
-func (sm *SubagentManager) runTask(ctx context.Context, task *SubagentTask, callback AsyncCallback) {
+func (sm *SubagentManager) runTask(parentCtx context.Context, task *SubagentTask, callback AsyncCallback) {
 	task.Status = "running"
 	task.Created = time.Now().UnixMilli()
+
+	// Apply TTL if configured (SpawnStandard)
+	var ctx context.Context
+	var cancel context.CancelFunc
+	if task.TTLMinutes > 0 {
+		ctx, cancel = context.WithTimeout(parentCtx, time.Duration(task.TTLMinutes)*time.Minute)
+	} else {
+		ctx, cancel = context.WithCancel(parentCtx)
+	}
+	defer cancel()
 
 	// Build system prompt for subagent
 	systemPrompt := `You are a subagent. Complete the given task independently and report the result.
 You have access to tools - use them as needed to complete your task.
 After completing the task, provide a clear summary of what was done.`
+
+	if task.TokenLimit > 0 {
+		systemPrompt += fmt.Sprintf("\n\nIMPORTANT: You have a token budget of %d tokens. Be concise and efficient.", task.TokenLimit)
+	}
 
 	messages := []providers.Message{
 		{

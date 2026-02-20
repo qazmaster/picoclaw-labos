@@ -99,7 +99,7 @@ func registerSharedTools(cfg *config.Config, msgBus *bus.MessageBus, registry *A
 		}); searchTool != nil {
 			agent.Tools.Register(searchTool)
 		}
-		agent.Tools.Register(tools.NewWebFetchTool(50000))
+		agent.Tools.Register(tools.NewWebFetchTool(50000, agent.Workspace))
 
 		// Hardware tools (I2C, SPI) - Linux only, returns error on other platforms
 		agent.Tools.Register(tools.NewI2CTool())
@@ -449,6 +449,8 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, agent *AgentInstance, 
 	iteration := 0
 	var finalContent string
 
+	consecutiveErrors := 0
+
 	for iteration < agent.MaxIterations {
 		iteration++
 
@@ -462,12 +464,37 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, agent *AgentInstance, 
 		// Build tool definitions
 		providerToolDefs := agent.Tools.ToProviderDefs()
 
+		// Determine effective model based on ModelTiers (if configured)
+		effectiveModel := agent.Model
+		if agent.ModelTiers != nil {
+			if opts.SessionKey == "heartbeat" {
+				if agent.ModelTiers.Heartbeat != "" {
+					effectiveModel = agent.ModelTiers.Heartbeat
+				}
+			} else {
+				// Simple heuristic for Planning mode: check if the first user string contains a planning skill keyword.
+				// In a fully integrated system this might be passed via opts.Mode, but for now we regex map it if we can
+				// Or default to execution if not a heartbeat
+				if agent.ModelTiers.Execution != "" {
+					// Assume Execution by default for non-heartbeats
+					effectiveModel = agent.ModelTiers.Execution
+				}
+				// If we knew this was strictly planning, we could use agent.ModelTiers.Planning.
+				// For now, if the user explicitly invoked a "planning" skill, we try to use the planning tier.
+				if strings.Contains(opts.UserMessage, "planning") || strings.Contains(opts.UserMessage, "writing-plans") {
+					if agent.ModelTiers.Planning != "" {
+						effectiveModel = agent.ModelTiers.Planning
+					}
+				}
+			}
+		}
+
 		// Log LLM request details
 		logger.DebugCF("agent", "LLM request",
 			map[string]interface{}{
 				"agent_id":          agent.ID,
 				"iteration":         iteration,
-				"model":             agent.Model,
+				"model":             effectiveModel,
 				"messages_count":    len(messages),
 				"tools_count":       len(providerToolDefs),
 				"max_tokens":        agent.ContextWindow,
@@ -491,6 +518,7 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, agent *AgentInstance, 
 			if len(agent.Candidates) > 1 && al.fallback != nil {
 				fbResult, fbErr := al.fallback.Execute(ctx, agent.Candidates,
 					func(ctx context.Context, provider, model string) (*providers.LLMResponse, error) {
+						// Here fallback uses the provided model, not the tier model
 						return agent.Provider.Chat(ctx, messages, providerToolDefs, model, map[string]interface{}{
 							"max_tokens":  agent.ContextWindow,
 							"temperature": agent.Temperature,
@@ -507,7 +535,7 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, agent *AgentInstance, 
 				}
 				return fbResult.Response, nil
 			}
-			return agent.Provider.Chat(ctx, messages, providerToolDefs, agent.Model, map[string]interface{}{
+			return agent.Provider.Chat(ctx, messages, providerToolDefs, effectiveModel, map[string]interface{}{
 				"max_tokens":  agent.ContextWindow,
 				"temperature": agent.Temperature,
 			})
@@ -639,6 +667,16 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, agent *AgentInstance, 
 
 			toolResult := agent.Tools.ExecuteWithContext(ctx, tc.Name, tc.Arguments, opts.Channel, opts.ChatID, asyncCallback)
 
+			// Log to JSONL Ledger
+			logger.LogLedgerEvent("TOOL_EXECUTED", map[string]interface{}{
+				"agent_id":    agent.ID,
+				"session_key": opts.SessionKey,
+				"tool":        tc.Name,
+				"arguments":   string(argsJSON),
+				"iteration":   iteration,
+				"success":     toolResult.Err == nil,
+			})
+
 			// Send ForUser content to user immediately if not Silent
 			if !toolResult.Silent && toolResult.ForUser != "" && opts.SendResponse {
 				al.bus.PublishOutbound(bus.OutboundMessage{
@@ -657,6 +695,48 @@ func (al *AgentLoop) runLLMIteration(ctx context.Context, agent *AgentInstance, 
 			contentForLLM := toolResult.ForLLM
 			if contentForLLM == "" && toolResult.Err != nil {
 				contentForLLM = toolResult.Err.Error()
+			}
+
+			// Circuit Breaker Logic
+			if toolResult.Err != nil {
+				consecutiveErrors++
+				if agent.CircuitBreakerMaxRetries > 0 && consecutiveErrors >= agent.CircuitBreakerMaxRetries {
+					logger.WarnCF("agent", "Circuit Breaker OPEN: Max retries exceeded", map[string]interface{}{
+						"tool":     tc.Name,
+						"failures": consecutiveErrors,
+						"agent_id": agent.ID,
+					})
+
+					// Log to JSONL Ledger
+					logger.LogLedgerEvent("CIRCUIT_BREAKER_OPEN", map[string]interface{}{
+						"agent_id":    agent.ID,
+						"session_key": opts.SessionKey,
+						"tool":        tc.Name,
+						"failures":    consecutiveErrors,
+					})
+
+					if agent.CircuitBreakerEscalateModel != "" && agent.Model != agent.CircuitBreakerEscalateModel {
+						logger.InfoCF("agent", "Circuit Breaker: Escalating to reasoning model", map[string]interface{}{
+							"from": agent.Model,
+							"to":   agent.CircuitBreakerEscalateModel,
+						})
+						agent.Model = agent.CircuitBreakerEscalateModel
+
+						// Add a system message injected to history describing the escalation
+						escalationMsg := providers.Message{
+							Role:    "system",
+							Content: "[CIRCUIT BREAKER] Entering reasoning mode to resolve repetitive tool failures.",
+						}
+						messages = append(messages, escalationMsg)
+						agent.Sessions.AddFullMessage(opts.SessionKey, escalationMsg)
+					}
+
+					// Prepend escalation warning to the tool error
+					contentForLLM = fmt.Sprintf("[CIRCUIT BREAKER ESCALATION] The previous tool failed %d times consecutively. Analyze the errors and change your approach.\n%s", consecutiveErrors, contentForLLM)
+				}
+			} else {
+				// Reset on success
+				consecutiveErrors = 0
 			}
 
 			toolResultMsg := providers.Message{

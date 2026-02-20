@@ -234,46 +234,38 @@ func (hs *HeartbeatService) buildPrompt() string {
 		return ""
 	}
 
-	now := time.Now().Format("2006-01-02 15:04:05")
-	return fmt.Sprintf(`# Heartbeat Check
-
-Current time: %s
-
-You are a proactive AI assistant. This is a scheduled heartbeat check.
-Review the following tasks and execute any necessary actions using available skills.
-If there is nothing that requires attention, respond ONLY with: HEARTBEAT_OK
-
-%s
-`, now, content)
+	now := time.Now().Format(time.RFC3339)
+	return fmt.Sprintf(`{
+  "heartbeat_request": {
+    "timestamp": "%s",
+    "instructions": "You are a proactive AI assistant. This is a scheduled heartbeat check. Review the following context and execute tasks if necessary. Respond ONLY with a valid JSON object matching the StatPulse schema.",
+    "expected_response_format": {
+      "vfp_status": "string (OK, ERROR, WARNING)",
+      "stats": { "main_metric": "string or number" },
+      "alerts": ["string"],
+      "next_action": "string (description of what needs to be done, or 'NONE')"
+    },
+    "context": %s
+  }
+}`, now, content)
 }
 
 // createDefaultHeartbeatTemplate creates the default HEARTBEAT.md file
 func (hs *HeartbeatService) createDefaultHeartbeatTemplate() {
 	heartbeatPath := filepath.Join(hs.workspace, "HEARTBEAT.md")
 
-	defaultContent := `# Heartbeat Check List
-
-This file contains tasks for the heartbeat service to check periodically.
-
-## Examples
-
-- Check for unread messages
-- Review upcoming calendar events
-- Check device status (e.g., MaixCam)
-
-## Instructions
-
-- Execute ALL tasks listed below. Do NOT skip any task.
-- For simple tasks (e.g., report current time), respond directly.
-- For complex tasks that may take time, use the spawn tool to create a subagent.
-- The spawn tool is async - subagent results will be sent to the user automatically.
-- After spawning a subagent, CONTINUE to process remaining tasks.
-- Only respond with HEARTBEAT_OK when ALL tasks are done AND nothing needs attention.
-
----
-
-Add your heartbeat tasks below this line:
-`
+	defaultContent := `{
+  "tasks": [
+    "Check for unread messages",
+    "Review upcoming calendar events",
+    "Check device status (e.g., MaixCam)"
+  ],
+  "instructions": [
+    "Execute ALL tasks listed above.",
+    "For complex tasks, use the spawn tool to create a subagent.",
+    "Only respond with vfp_status='OK' and next_action='NONE' when ALL tasks are done AND nothing needs attention."
+  ]
+}`
 
 	if err := os.WriteFile(heartbeatPath, []byte(defaultContent), 0644); err != nil {
 		hs.logError("Failed to create default HEARTBEAT.md: %v", err)

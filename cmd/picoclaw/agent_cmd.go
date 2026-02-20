@@ -45,6 +45,10 @@ func agentCmd() {
 		os.Exit(1)
 	}
 
+	if err := logger.InitLedger(cfg.WorkspacePath()); err != nil {
+		logger.WarnF("Failed to initialize ledger", map[string]interface{}{"error": err})
+	}
+
 	provider, err := providers.CreateProvider(cfg)
 	if err != nil {
 		fmt.Printf("Error creating provider: %v\n", err)

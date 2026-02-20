@@ -40,6 +40,13 @@ These skills are instruction/methodology only. They work anywhere PicoClaw runs.
 | `hardware` | Built-in |
 | `skill-creator` | Built-in |
 | `summarize` | Built-in |
+| `brainstorming` | Superpowers |
+| `writing-plans` | Superpowers |
+| `test-driven-development` | Superpowers |
+| `systematic-debugging` | Superpowers |
+| `dispatching-parallel-agents` | Superpowers |
+| `subagent-driven-development` | Superpowers |
+| `executing-plans` | Superpowers |
 
 ---
 

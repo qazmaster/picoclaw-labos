@@ -2,11 +2,14 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"regexp"
+	"strings"
 	"time"
 
 	"github.com/sipeed/picoclaw/pkg/agent"
@@ -40,6 +43,10 @@ func gatewayCmd() {
 	if err != nil {
 		fmt.Printf("Error loading config: %v\n", err)
 		os.Exit(1)
+	}
+
+	if err := logger.InitLedger(cfg.WorkspacePath()); err != nil {
+		logger.WarnF("Failed to initialize ledger", map[string]interface{}{"error": err})
 	}
 
 	provider, err := providers.CreateProvider(cfg)
@@ -89,11 +96,44 @@ func gatewayCmd() {
 		if err != nil {
 			return tools.ErrorResult(fmt.Sprintf("Heartbeat error: %v", err))
 		}
-		if response == "HEARTBEAT_OK" {
+
+		// Try to extract JSON from the response (in case it is wrapped in markdown)
+		jsonStr := response
+		re := regexp.MustCompile("(?s)```json\\s*(.*?)\\s*```")
+		match := re.FindStringSubmatch(response)
+		if len(match) > 1 {
+			jsonStr = match[1]
+		}
+
+		var pulse struct {
+			VfpStatus  string         `json:"vfp_status"`
+			Stats      map[string]any `json:"stats"`
+			Alerts     []string       `json:"alerts"`
+			NextAction string         `json:"next_action"`
+		}
+
+		if err := json.Unmarshal([]byte(jsonStr), &pulse); err == nil {
+			// Structured JSON heartbeat
+			if pulse.VfpStatus == "OK" && (pulse.NextAction == "NONE" || pulse.NextAction == "") {
+				return tools.SilentResult("Heartbeat OK (JSON)")
+			}
+
+			// Format alerts and next action
+			msg := fmt.Sprintf("Heartbeat Status: %s\n", pulse.VfpStatus)
+			if len(pulse.Alerts) > 0 {
+				msg += fmt.Sprintf("Alerts: %s\n", strings.Join(pulse.Alerts, ", "))
+			}
+			if pulse.NextAction != "" && pulse.NextAction != "NONE" {
+				msg += fmt.Sprintf("Action: %s\n", pulse.NextAction)
+			}
+			return tools.SilentResult(msg) // Send as silent, logs will handle it
+		}
+
+		// Fallback for raw text (HEARTBEAT_OK)
+		if strings.Contains(response, "HEARTBEAT_OK") {
 			return tools.SilentResult("Heartbeat OK")
 		}
-		// For heartbeat, always return silent - the subagent result will be
-		// sent to user via processSystemMessage when the async task completes
+
 		return tools.SilentResult(response)
 	})
 

@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -339,15 +341,17 @@ func (t *WebSearchTool) Execute(ctx context.Context, args map[string]interface{}
 }
 
 type WebFetchTool struct {
-	maxChars int
+	maxChars  int
+	workspace string
 }
 
-func NewWebFetchTool(maxChars int) *WebFetchTool {
+func NewWebFetchTool(maxChars int, workspace string) *WebFetchTool {
 	if maxChars <= 0 {
 		maxChars = 50000
 	}
 	return &WebFetchTool{
-		maxChars: maxChars,
+		maxChars:  maxChars,
+		workspace: workspace,
 	}
 }
 
@@ -458,6 +462,32 @@ func (t *WebFetchTool) Execute(ctx context.Context, args map[string]interface{})
 	} else {
 		text = string(body)
 		extractor = "raw"
+	}
+
+	overflowLimit := 15000
+	if t.workspace != "" && len(text) > overflowLimit {
+		tmpDir := filepath.Join(t.workspace, "tmp")
+		os.MkdirAll(tmpDir, 0755)
+		fileName := fmt.Sprintf("web_fetch_%d.md", time.Now().UnixNano())
+		filePath := filepath.Join(tmpDir, fileName)
+
+		err := os.WriteFile(filePath, []byte(text), 0644)
+		if err == nil {
+			result := map[string]interface{}{
+				"url":       urlStr,
+				"status":    resp.StatusCode,
+				"extractor": extractor,
+				"overflow":  true,
+				"file":      filePath,
+				"length":    len(text),
+			}
+			resultJSON, _ := json.MarshalIndent(result, "", "  ")
+
+			return &ToolResult{
+				ForLLM:  fmt.Sprintf("FILE_OVERFLOW: Content too large (%d bytes). Saved to %s. Please use read_file to view the content if needed.", len(text), filePath),
+				ForUser: string(resultJSON),
+			}
+		}
 	}
 
 	truncated := len(text) > maxChars

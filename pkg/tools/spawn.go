@@ -50,6 +50,14 @@ func (t *SpawnTool) Parameters() map[string]interface{} {
 				"type":        "string",
 				"description": "Optional target agent ID to delegate the task to",
 			},
+			"ttl_minutes": map[string]interface{}{
+				"type":        "number",
+				"description": "Optional time-to-live in minutes. Subagent is terminated after this duration (default: 0 = no limit)",
+			},
+			"token_limit": map[string]interface{}{
+				"type":        "number",
+				"description": "Optional max token budget for the subagent. Limits total LLM tokens consumed (default: 0 = no limit)",
+			},
 		},
 		"required": []string{"task"},
 	}
@@ -73,6 +81,16 @@ func (t *SpawnTool) Execute(ctx context.Context, args map[string]interface{}) *T
 	label, _ := args["label"].(string)
 	agentID, _ := args["agent_id"].(string)
 
+	// Parse TTL and token limit (SpawnStandard)
+	var ttlMinutes int
+	if v, ok := args["ttl_minutes"].(float64); ok && v > 0 {
+		ttlMinutes = int(v)
+	}
+	var tokenLimit int
+	if v, ok := args["token_limit"].(float64); ok && v > 0 {
+		tokenLimit = int(v)
+	}
+
 	// Check allowlist if targeting a specific agent
 	if agentID != "" && t.allowlistCheck != nil {
 		if !t.allowlistCheck(agentID) {
@@ -85,7 +103,7 @@ func (t *SpawnTool) Execute(ctx context.Context, args map[string]interface{}) *T
 	}
 
 	// Pass callback to manager for async completion notification
-	result, err := t.manager.Spawn(ctx, task, label, agentID, t.originChannel, t.originChatID, t.callback)
+	result, err := t.manager.Spawn(ctx, task, label, agentID, t.originChannel, t.originChatID, ttlMinutes, tokenLimit, t.callback)
 	if err != nil {
 		return ErrorResult(fmt.Sprintf("failed to spawn subagent: %v", err))
 	}
