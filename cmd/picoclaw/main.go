@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"runtime"
 
+	"github.com/joho/godotenv"
 	"github.com/sipeed/picoclaw/pkg/config"
 	"github.com/sipeed/picoclaw/pkg/skills"
 )
@@ -63,6 +64,8 @@ func printVersion() {
 }
 
 func main() {
+	_ = godotenv.Load() // Ignore error if .env doesn't exist
+
 	if len(os.Args) < 2 {
 		printHelp()
 		os.Exit(1)

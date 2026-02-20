@@ -3,6 +3,7 @@ package channels
 import (
 	"context"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/mymmrac/telego"
@@ -52,9 +53,17 @@ func (c *cmd) Help(ctx context.Context, message telego.Message) error {
 }
 
 func (c *cmd) Start(ctx context.Context, message telego.Message) error {
+	responseText := "Hello! I am PicoClaw 🦞"
+
+	// Check if Gemini API key exists
+	if os.Getenv("GEMINI_API_KEY") == "" {
+		responseText += "\n\nLooks like your `GEMINI_API_KEY` is not set. To unlock advanced skills like `gemini-deep-research`, please create a `.env` file in the root directory where PicoClaw is running with the following line:\n\n`GEMINI_API_KEY=your_key_here`\n\nThen restart PicoClaw."
+	}
+
 	_, err := c.bot.SendMessage(ctx, &telego.SendMessageParams{
-		ChatID: telego.ChatID{ID: message.Chat.ID},
-		Text:   "Hello! I am PicoClaw 🦞",
+		ChatID:    telego.ChatID{ID: message.Chat.ID},
+		Text:      responseText,
+		ParseMode: telego.ModeMarkdown,
 		ReplyParameters: &telego.ReplyParameters{
 			MessageID: message.MessageID,
 		},

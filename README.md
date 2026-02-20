@@ -77,6 +77,25 @@
 
 <img src="assets/compare.jpg" alt="PicoClaw" width="512">
 
+## 🏛️ Architecture
+
+PicoClaw is designed with a lightweight, modular architecture to maximize efficiency while remaining highly extensible:
+
+- **Core Agent Loop**: The intelligent center of PicoClaw. Manages conversational context, tool execution, safety sandboxing, and memory operations.
+- **Message Bus**: A decoupled event system seamlessly connecting external channels, the AI agent, and internal background services.
+- **Channels**: Interfaces to the user's world, supporting CLI, Telegram, Discord, DingTalk, LINE, WhatsApp, and more.
+- **Providers**: Flexible LLM backends routing across popular protocols (OpenRouter, Groq, Gemini, Anthropic, OpenAI, Zhipu, DeepSeek, vLLM).
+- **Skills System**: Pluggable, language-agnostic capabilities located in `workspace/skills/`. Skills receive secure environment injection via `.env` files and can instantly augment the agent's abilities without recompiling the core binaries.
+
+## 🧩 Skills System
+
+PicoClaw's extensibility comes from its filesystem-based Skills architecture:
+
+- **Language-Agnostic**: Write skills in Python, Node.js, Go, bash, or any executable format.
+- **Sandboxed Execution**: Skills run as separate subprocesses, ensuring a bug in a skill doesn't crash the core daemon.
+- **Environment Integration**: PicoClaw automatically loads your `.env` file and passes it to the skills, easily managing `GEMINI_API_KEY` or custom tokens.
+- **Skill Instructions**: Every skill folder contains a `SKILL.md` file giving the AI explicit system prompts and CLI patterns on how to formulate commands correctly.
+
 ## 🦾 Demonstration
 
 ### 🛠️ Standard Assistant Workflows
@@ -160,7 +179,8 @@ cd picoclaw
 
 # 2. Set your API keys
 cp config/config.example.json config/config.json
-vim config/config.json      # Set DISCORD_BOT_TOKEN, API keys, etc.
+vim config/config.json      # Set basic JSON configuration defaults
+touch .env                 # (Optional) Store credentials and secret keys
 
 # 3. Build & Start
 docker compose --profile gateway up -d
@@ -202,7 +222,18 @@ docker compose --profile gateway up -d
 picoclaw onboard
 ```
 
-**2. Configure** (`~/.picoclaw/config.json`)
+**2. Configure Environment (Optional but Recommended)**
+
+Create a `.env` file in the root directory where you run PicoClaw to easily manage your API keys without modifying the config file directly:
+
+```env
+GEMINI_API_KEY=your_gemini_key
+OPENROUTER_API_KEY=your_openrouter_key
+# Other provider API keys...
+```
+*(PicoClaw will automatically load `.env` on startup, making it available to core features and external skills).*
+
+**3. Configure Advanced Options** (`~/.picoclaw/config.json`)
 
 ```json
 {
@@ -223,11 +254,6 @@ picoclaw onboard
   },
   "tools": {
     "web": {
-      "brave": {
-        "enabled": false,
-        "api_key": "YOUR_BRAVE_API_KEY",
-        "max_results": 5
-      },
       "duckduckgo": {
         "enabled": true,
         "max_results": 5
@@ -237,14 +263,14 @@ picoclaw onboard
 }
 ```
 
-**3. Get API Keys**
+**4. Get API Keys**
 
 * **LLM Provider**: [OpenRouter](https://openrouter.ai/keys) · [Zhipu](https://open.bigmodel.cn/usercenter/proj-mgmt/apikeys) · [Anthropic](https://console.anthropic.com) · [OpenAI](https://platform.openai.com) · [Gemini](https://aistudio.google.com/api-keys)
 * **Web Search** (optional): [Brave Search](https://brave.com/search/api) - Free tier available (2000 requests/month)
 
 > **Note**: See `config.example.json` for a complete configuration template.
 
-**4. Chat**
+**5. Chat**
 
 ```bash
 picoclaw agent -m "What is 2+2?"
