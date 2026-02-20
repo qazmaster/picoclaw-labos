@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 	"strings"
+
+	"github.com/sipeed/picoclaw/pkg/security"
 )
 
 // EditFileTool edits a file by replacing old_text with new_text.
@@ -69,6 +71,10 @@ func (t *EditFileTool) Execute(ctx context.Context, args map[string]interface{})
 
 	resolvedPath, err := validatePath(path, t.allowedDir, t.restrict)
 	if err != nil {
+		return ErrorResult(err.Error())
+	}
+
+	if err := security.CheckFilePathAccess(resolvedPath); err != nil {
 		return ErrorResult(err.Error())
 	}
 
@@ -148,6 +154,10 @@ func (t *AppendFileTool) Execute(ctx context.Context, args map[string]interface{
 
 	resolvedPath, err := validatePath(path, t.workspace, t.restrict)
 	if err != nil {
+		return ErrorResult(err.Error())
+	}
+
+	if err := security.CheckFilePathAccess(resolvedPath); err != nil {
 		return ErrorResult(err.Error())
 	}
 

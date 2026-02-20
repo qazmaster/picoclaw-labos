@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/sipeed/picoclaw/pkg/config"
+	"github.com/sipeed/picoclaw/pkg/security"
 )
 
 type ExecTool struct {
@@ -238,6 +239,10 @@ func (t *ExecTool) guardCommand(command, cwd string) string {
 		if pattern.MatchString(lower) {
 			return "Command blocked by safety guard (dangerous pattern detected)"
 		}
+	}
+
+	if err := security.CheckBashCommand(cmd); err != nil {
+		return err.Error()
 	}
 
 	if len(t.allowPatterns) > 0 {

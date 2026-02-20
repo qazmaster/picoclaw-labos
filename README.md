@@ -554,16 +554,16 @@ When `restrict_to_workspace: true`, the following tools are sandboxed:
 | `append_file` | Append to files | Only files within workspace |
 | `exec` | Execute commands | Command paths must be within workspace |
 
-#### Additional Exec Protection
+#### Native Security Module
 
-Even with `restrict_to_workspace: false`, the `exec` tool blocks these dangerous commands:
+PicoClaw includes a built-in native security module (ported from `claude-code-hooks`) that actively monitors the `exec`, `read_file`, `write_file`, `edit_file`, and `append_file` tools. This protects against severe operations and secret exfiltration.
 
-* `rm -rf`, `del /f`, `rmdir /s` — Bulk deletion
-* `format`, `mkfs`, `diskpart` — Disk formatting
-* `dd if=` — Disk imaging
-* Writing to `/dev/sd[a-z]` — Direct disk writes
-* `shutdown`, `reboot`, `poweroff` — System shutdown
-* Fork bomb `:(){ :|:& };:`
+It blocks:
+* **Dangerous Commands**: `rm -rf /`, `curl | sh`, `docker system prune`, `git push --force`, fork bombs, etc.
+* **Sensitive Files**: `.env`, `~/.ssh/id_rsa`, `~/.aws/credentials`, `~/.gitconfig`, etc.
+* **Exfiltration**: `cat .env`, `base64 ~/.ssh/id_rsa`, `curl -F file=@.env`.
+
+Even with `restrict_to_workspace: false`, the orchestrator will intercept these actions and prevent the agent from executing them.
 
 #### Error Examples
 

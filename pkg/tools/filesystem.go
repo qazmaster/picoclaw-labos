@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/sipeed/picoclaw/pkg/security"
 )
 
 // validatePath ensures the given path is within the workspace if restrict is true.
@@ -118,6 +120,10 @@ func (t *ReadFileTool) Execute(ctx context.Context, args map[string]interface{})
 		return ErrorResult(err.Error())
 	}
 
+	if err := security.CheckFilePathAccess(resolvedPath); err != nil {
+		return ErrorResult(err.Error())
+	}
+
 	content, err := os.ReadFile(resolvedPath)
 	if err != nil {
 		return ErrorResult(fmt.Sprintf("failed to read file: %v", err))
@@ -173,6 +179,10 @@ func (t *WriteFileTool) Execute(ctx context.Context, args map[string]interface{}
 
 	resolvedPath, err := validatePath(path, t.workspace, t.restrict)
 	if err != nil {
+		return ErrorResult(err.Error())
+	}
+
+	if err := security.CheckFilePathAccess(resolvedPath); err != nil {
 		return ErrorResult(err.Error())
 	}
 
